@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "packages": {
+    "github.com/beamfall/plugin-enrichment": 98.0
+  }
+}

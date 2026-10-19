@@ -1,0 +1,111 @@
+# Enrichment plugin CI gate.
+#
+# The enrichment plugin is a pure-stdlib fingerprint provider: it has no
+# Bundle, parser, or scorer, so there is no plugin-sdk contract surface to run
+# and no plugin-sdk dependency to replace. The optional sdk_ref dispatch input
+# lets a plugin-sdk change confirm that this repository's gate still passes.
+# The gate is gofmt, a check that the module stays dependency-free (no go.sum,
+# no require block, no github.com/beamfall dependency), vet, staticcheck, the
+# test-depth contracts, exact per-package coverage, golangci-lint, and a race
+# run. The unit tests assert the deterministic, normalized fingerprint
+# contract that must hold across versions. A short bounded fuzz run of the PNG
+# decoder runs weekly and on manual dispatch.
+name: conformance
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  schedule:
+    - cron: '19 5 * * 3'
+  workflow_dispatch:
+    inputs:
+      sdk_ref:
+        description: 'plugin-sdk ref to test alongside this dependency-free plugin'
+        required: false
+        type: string
+
+jobs:
+  fast-conformance:
+    name: fast conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Checkout SDK override
+        if: ${{ inputs.sdk_ref != '' }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: beamfall/plugin-sdk
+          ref: ${{ inputs.sdk_ref }}
+          path: beamfall-plugin-sdk
+      - name: Keep dependency-free SDK wiring explicit
+        if: ${{ inputs.sdk_ref != '' }}
+        run: echo "sdk_ref checked out for a cross-repo check; enrichment intentionally has no plugin-sdk dependency"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: gofmt -l . | tee /dev/stderr | (! grep -q .)
+      - name: assert-no-external-deps
+        run: |
+          fail=0
+          if [ -f go.sum ]; then echo "go.sum must not exist (the plugin is dependency-free)"; fail=1; fi
+          if grep -qE '^require' go.mod; then echo "go.mod must not have a require block"; fail=1; fi
+          if grep -v '^module ' go.mod | grep -q 'github.com/beamfall'; then echo "go.mod must not reference other github.com/beamfall modules"; fail=1; fi
+          exit "$fail"
+      - name: vet
+        run: go vet ./...
+      - name: staticcheck
+        uses: dominikh/staticcheck-action@9716614d4101e79b4340dd97b10e54d68234e431 # v1.4.1
+        with:
+          version: latest
+          install-go: false
+      - name: test-depth contracts
+        run: script/gate.sh contracts
+      - name: tests and exact per-package coverage
+        run: script/gate.sh coverage
+      - uses: golangci/golangci-lint-action@25e2cdc5eb1d7a04fdc45ff538f1a00e960ae128 # v8.0.0
+        with:
+          version: v2.12.2
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: race
+        run: script/gate.sh race
+
+  conformance:
+    name: conformance
+    needs: [fast-conformance, race]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require fast and race jobs
+        env:
+          FAST_RESULT: ${{ needs.fast-conformance.result }}
+          RACE_RESULT: ${{ needs.race.result }}
+        run: |
+          test "$FAST_RESULT" = success
+          test "$RACE_RESULT" = success
+
+  fuzz:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: bounded image decoder fuzz
+        env:
+          FUZZ_TIME: 20s
+        run: script/gate.sh fuzz

@@ -1,0 +1,11 @@
+version: "2"
+
+# Pinned golangci-lint config, shared verbatim with the Beamfall plugin SDK.
+# Linter set: the golangci-lint v2 defaults (errcheck, govet, ineffassign,
+# staticcheck, unused) plus misspell for doc/comment hygiene.
+linters:
+  enable:
+    - misspell
+
+run:
+  timeout: 5m
