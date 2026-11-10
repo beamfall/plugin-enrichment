@@ -4,3 +4,9 @@
 .claude/commands/opsx/
 .claude/skills/openspec-*/
 .agents/skills/openspec-*/
+
+# Corvint local state
+.context-corvint/
+.corvint/self-observations.jsonl
+.corvint/unplanned-reads.jsonl
+.corvint/unplanned-reads.enabled
