@@ -4,44 +4,44 @@
 
 # Beamfall Enrichment Plugin
 
-**Deterministic content fingerprints for your Beamfall library, with no model, no network, and no
-dependencies.** The enrichment plugin gives Beamfall Core stable fingerprints of text and PNG
-images, so the server can tell when content has changed and compare like with like.
+The enrichment plugin gives Beamfall Core deterministic fingerprints of text and PNG images, so
+the server can tell when content has changed and compare like with like. It uses no model, no
+network and no third-party dependencies.
 
-It is honest about what it is. These fingerprints are hashes, not AI embeddings, and the plugin
-says so: it never reports itself as a semantic search provider, and it refuses every request that
-would store a hash where a semantic vector belongs. It is free and open source under
-[AGPL-3.0](LICENSE).
+The fingerprints are hashes. They are not AI embeddings, and the plugin never reports itself as a
+semantic search provider; it refuses every request that would store a hash where a semantic vector
+belongs. It is free and open source under [AGPL-3.0](LICENSE).
 
-## What you get
+## Features
 
-- **Text fingerprints.** `LexicalFingerprint` lowercases text, splits it into letter and digit
+- `LexicalFingerprint` lowercases text, splits it into letter and digit
   tokens, hashes each token into one of 256 buckets, and L2-normalizes the result. The same text
   always gives the same fingerprint, on every machine.
-- **Image fingerprints.** `PixelFingerprint` divides an image into a 16x16 grid, averages the
+- `PixelFingerprint` divides an image into a 16x16 grid, averages the
   color and luminance of each cell, and hashes the cells into a 256-value, L2-normalized
   fingerprint. It works on any decoded Go `image.Image`.
-- **A careful PNG reader.** `PixelFingerprintReader` reads PNG files with its own streaming
+- `PixelFingerprintReader` reads PNG files with its own streaming
   decoder. It checks every chunk and CRC, never builds a full decoded image in memory, and
-  refuses input over hard limits: 16 MiB encoded, 16 million pixels, or 8,192 pixels on either
+  refuses input over hard limits: 16 MiB encoded, 16,777,216 pixels (16 Mi), or 8,192 pixels on either
   side.
-- **Cancellation that works.** Long work checks its context at least every 4,096 pixels. If the
+- Long work checks its context at least every 4,096 pixels. If the
   source is an `io.ReadCloser`, cancelling closes it, so a stalled read does not hold the server.
-- **Batches with isolated failures.** `PixelFingerprintBatch` processes up to 1,024 images in one
+- `PixelFingerprintBatch` processes up to 1,024 images in one
   call. A bad file returns its own error and the rest of the batch still completes; an oversized
   batch is refused before any input is read.
-- **No confusion with semantic search.** Text and image fingerprints carry their own kinds,
+- Text and image fingerprints carry their own kinds,
   `lexical-fingerprint-v1` and `pixel-fingerprint-v1`, and are kept apart from each other and
   from any semantic space. The semantic entry points (`Available`, `EmbedQuery`,
   `EmbedImageReader`, `EmbedImageBatch`) always report that no semantic provider is available.
-- **A compatibility contract for real models.** `EmbeddingIdentity` records a semantic vector
+- `EmbeddingIdentity` records a semantic vector
   space by model, model version, weights digest, preprocessing, dimensions, normalization, and
   metric. `RequireCompatible` refuses to compare vectors unless every field matches, because equal
   dimensions alone do not make two spaces comparable.
-- **Off unless you turn it on.** Each provider is built with an enabled switch and reports it
+- Each provider is built with an enabled switch and reports it
   through `FingerprintsAvailable`, so fingerprint work happens only when the operator enables it.
-- **Pure Go standard library.** No third-party modules, no `go.sum`, no network access, and no
-  dependency on other Beamfall modules. CI enforces this on every change.
+- The module uses only the Go standard library: it has no third-party modules, no `go.sum`, no
+  network access and no dependency on other Beamfall modules. CI checks the dependency rules on every
+  pull request and every push to `main`.
 
 ## How it fits into Beamfall
 
